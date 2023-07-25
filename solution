@@ -1,0 +1,386 @@
+Import the dataset and do usual exploratory analysis steps like checking the structure & characteristics of the dataset
+Data type of columns in a table
+Time period for which the data is given
+Cities and States of customers ordered during the given period
+
+		Data type of columns in a table :
+
+
+1.Data type of columns in a table
+
+
+
+2.
+Time period for which the data is given :
+
+
+select min(order_purchase_timestamp) as starttime,
+max(order_purchase_timestamp) as endtime
+from `target.orders`
+
+
+
+
+
+
+
+3
+Cities and States of customers ordered during the given period
+
+
+select distinct c.customer_city , c.customer_state  
+from target.customers as c join target.orders as o
+on c.customer_id = o.customer_id 
+
+
+
+
+
+In-depth Exploration:
+Is there a growing trend on e-commerce in Brazil? How can we describe a complete scenario? Can we see some seasonality with peaks at specific months?
+We can not say that the business is growing continuously however it can be seen that there is a year on year growth.
+select 
+extract(year from order_purchase_timestamp) as year_,
+extract(month from order_purchase_timestamp) as month_,
+count(distinct order_id) as order_count
+from `target.orders`
+group by year_,month_
+order by year_,month_
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Also there is an increase in revenue from 2017-2018
+
+select 
+sum(p.payment_value) as cost,
+extract(year from o.order_purchase_timestamp) as year_,
+from `target.payments` as p join `target.orders` as o 
+on p.order_id = o.order_id
+group by extract(year from o.order_purchase_timestamp))
+
+
+
+
+
+
+
+What time do Brazilian customers tend to buy (Dawn, Morning, Afternoon or Night)?
+
+We can see that Brazilians tend to buy mostly in the afternoon ,
+
+As In the top 5 13,14,15,16 hour is present with high order count  
+
+
+select 
+extract(HOUR from order_purchase_timestamp) as hour_,
+Count(distinct order_id) as order_count
+from `target.orders`
+group by hour_
+order by order_count desc
+
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Evolution of E-commerce orders in the Brazil region:
+Get month on month orders by states
+
+Target is doing well in the state SP as it has highest order counts 
+
+
+select  
+extract(year from o.order_purchase_timestamp) as year_,
+extract(month from o.order_purchase_timestamp) as month_,
+c.customer_state,
+Count(distinct o.order_id) as order_count
+from target.customers as c join target.orders as o
+on c.customer_id = o.customer_id 
+group by year_,month_,c.customer_state
+order by order_count desc ,month_
+
+
+
+
+Distribution of customers across the states in Brazil
+Target has its highest customer base in the state SP 
+
+select  
+c.customer_state,
+Count(distinct o.customer_id) as customer_count
+from target.customers as c join target.orders as o
+on c.customer_id = o.customer_id 
+group by customer_state
+order by customer_count desc
+
+
+
+
+
+
+
+
+
+The states SP , RJ , MG are with highest customer and highest sales as well , target should focus on the sates like RS and PR and apply similar sale strategies in SP/RJ/MG to increase the sales 
+
+
+
+
+Impact on Economy: Analyze the money movement by e-commerce by looking at order prices, freight and others.
+Get % increase in cost of orders from 2017 to 2018 (include months between Jan to Aug only) - You can use “payment_value” column in payments table
+There is an 136% increase in revenue from 2017 to 2018
+with tab1 as(select 
+sum(p.payment_value) as cost,
+extract(year from o.order_purchase_timestamp) as year_,
+from `target.payments` as p join `target.orders` as o 
+on p.order_id = o.order_id
+where extract(month from o.order_purchase_timestamp) between 1 and 8
+group by extract(year from o.order_purchase_timestamp)),
+
+tab2 as (select * , 
+lag(cost) over(order by year_) as prv_cost
+from tab1)
+
+select ((cost - prv_cost )/prv_cost )*100 as percentage_increase from tab2 where year_=2018
+
+
+
+
+
+
+
+
+
+
+
+Mean & Sum of price and freight value by customer state
+select 
+avg(oi.price) as mean_price,
+sum(oi.price) as sum_price,
+avg(oi.freight_value) as mean_freight,
+sum(oi.freight_value) as sum_freight,
+ c.customer_state
+from `target.order_iteams` as oi join
+`target.orders` as o 
+on oi.order_id = o.order_id
+join `target.customers` as c
+on o.customer_id = c.customer_id
+group by customer_state
+
+
+
+5. Analysis on sales, freight and delivery time
+Calculate days between purchasing, delivering and estimated delivery
+
+There are so many customer who got their orders after more than 100 days of estimated delivery , target should focus on those cases 
+select *,
+date_diff(order_delivered_customer_date,order_purchase_timestamp,day) as orderTOdeliver,
+date_diff(order_delivered_customer_date,order_estimated_delivery_date,day) as estimatedTOdelivery
+from `target.orders`
+where order_status ='delivered' and date_diff(order_delivered_customer_date,order_estimated_delivery_date,day)>100
+
+order by estimatedTOdelivery desc
+
+
+
+
+Find time_to_delivery & diff_estimated_delivery. Formula for the same given below:
+time_to_delivery = order_purchase_timestamp-order_delivered_customer_date
+diff_estimated_delivery = order_estimated_delivery_date-order_delivered_customer_date
+
+select order_id,
+date_diff(order_delivered_customer_date,order_purchase_timestamp,day) as time_to_delivery,
+date_diff(order_delivered_customer_date,order_estimated_delivery_date,day) as diff_estimated_delivery
+from `target.orders`
+where order_status ='delivered' 
+order by diff_estimated_delivery desc
+
+
+Group data by state, take mean of freight_value, time_to_delivery, diff_estimated_delivery
+select avg(oi.freight_value) as mean_freight,
+avg(date_diff(o.order_delivered_customer_date,o.order_purchase_timestamp,day)) as time_to_delivery,
+avg(date_diff(o.order_delivered_customer_date,o.order_estimated_delivery_date,day)) as diff_estimated_delivery,
+c.customer_state
+from `target.order_iteams` as oi join
+`target.orders` as o 
+on oi.order_id = o.order_id
+join `target.customers` as c
+on o.customer_id = c.customer_id
+group by c.customer_state
+
+Sort the data to get the following:
+Top 5 states with highest/lowest average freight value - sort in desc/asc limit 5
+select avg(oi.freight_value) as mean_freight,
+avg(date_diff(o.order_delivered_customer_date,o.order_purchase_timestamp,day)) as time_to_delivery,
+avg(date_diff(o.order_delivered_customer_date,o.order_estimated_delivery_date,day)) as diff_estimated_delivery,
+c.customer_state
+from `target.order_iteams` as oi join
+`target.orders` as o 
+on oi.order_id = o.order_id
+join `target.customers` as c
+on o.customer_id = c.customer_id
+group by c.customer_state
+
+order by mean_freight desc
+
+
+
+Top 5 states with highest/lowest average time to delivery
+Below are the 5 states with highest average time to delivery compared to estimated date
+
+select avg(oi.freight_value) as mean_freight,
+avg(date_diff(o.order_delivered_customer_date,o.order_purchase_timestamp,day)) as time_to_delivery,
+avg(date_diff(o.order_delivered_customer_date,o.order_estimated_delivery_date,day)) as diff_estimated_delivery,
+c.customer_state
+from `target.order_iteams` as oi join
+`target.orders` as o 
+on oi.order_id = o.order_id
+join `target.customers` as c
+on o.customer_id = c.customer_id
+group by c.customer_state
+
+order by avg(date_diff(o.order_delivered_customer_date,o.order_purchase_timestamp,day)) desc
+
+
+
+
+Top 5 states where delivery is really fast/ not so fast compared to estimated date
+Below are the 5 states with fastest delivery compared to estimated date
+
+select avg(oi.freight_value) as mean_freight,
+avg(date_diff(o.order_delivered_customer_date,o.order_purchase_timestamp,day)) as time_to_delivery,
+avg(date_diff(o.order_delivered_customer_date,o.order_estimated_delivery_date,day)) as diff_estimated_delivery,
+c.customer_state
+from `target.order_iteams` as oi join
+`target.orders` as o 
+on oi.order_id = o.order_id
+join `target.customers` as c
+on o.customer_id = c.customer_id
+group by c.customer_state
+
+order by avg(date_diff(o.order_delivered_customer_date,o.order_estimated_delivery_date,day)) asc
+
+
+
+
+
+
+
+
+
+
+
+
+6. Payment type analysis:
+Month over Month count of orders for different payment types
+
+Debit card has good month on month growth rate
+
+with tab1 as
+(select count(o.order_id) as order_count ,
+extract(month from o.order_purchase_timestamp) as month_,
+p.payment_type
+ from `target.payments` as p join `target.orders` as o 
+ on o.order_id = p.order_id 
+ group by extract(month from o.order_purchase_timestamp),p.payment_type),
+
+tab2 as (select order_count, 
+lag(order_count) over(partition by payment_type order by month_) as prv_order_count,
+month_,payment_type 
+from tab1)
+
+select month_ , payment_type ,
+((order_count - prv_order_count)/prv_order_count)*100 as mom
+from tab2
+
+
+
+Count of orders based on the no. of payment installments
+
+
+Count of orders are more when number of instalment is less
+select * from
+(select distinct payment_installments,
+count(order_id) over (partition by payment_installments) count_order
+from `target.payments`) as t1
+order by t1.count_order desc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
